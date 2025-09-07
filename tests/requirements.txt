@@ -1,0 +1,7 @@
+# Testing requirements for PyNDS
+# These packages are needed to run the test suite
+
+pytest>=6.0.0
+pytest-timeout>=2.0.0
+pytest-mock>=3.0.0
+numpy>=1.20.0
