@@ -1,17 +1,95 @@
+# Pre-commit configuration for PyNDS
+# This ensures your code is clean, formatted, and follows standards that any developer can understand!
+
 repos:
+  # Basic file checks - keeping your files tidy
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        name: "Remove trailing whitespace (because spaces matter!)"
       - id: end-of-file-fixer
+        name: "Ensure files end with newline (because EOF matters!)"
       - id: check-yaml
+        name: "Check YAML syntax (because YAML is picky!)"
+      - id: check-json
+        name: "Check JSON syntax (because JSON is picky and annoying too!)"
+      - id: check-toml
+        name: "Check TOML syntax (because TOML is also very picky!)"
+      - id: check-merge-conflict
+        name: "Check for merge conflict markers (because conflicts are messy!)"
+      - id: check-added-large-files
+        name: "Check for large files (because we don't want to bloat the repo!)"
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+        name: "Check for case conflicts (because case sensitivity is should always be a requirement!)"
+      - id: check-ast
+        name: "Check Python AST (because syntax errors are painful!)"
+      - id: debug-statements
+        name: "Check for debug statements (because debug prints don't belong in production! You are not allowed to use debug prints!)"
 
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.2.0
+  # Python code formatting - making your code look fabulous and understandable by others
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
     hooks:
-      - id: flake8
-        args:
-          - --max-complexity=30
-          - --max-line-length=456
-          - --show-source
-          - --statistics
+      - id: black
+        name: "Format Python code with Black (because consistent formatting is beautiful and is a requirement for any code that is to be used by others!)"
+        language_version: python3
+        args: [--line-length=88]
+
+  # Import sorting - organizing your imports like a librarian
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        name: "Sort Python imports (because organized imports are a thing of beauty!)"
+        args: [--profile=black, --line-length=88]
+
+  # Modern Python linting - catching bugs before they bite and making your code more readable
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        name: "Lint Python code with Ruff (because fast linting is awesome!)"
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        name: "Format Python code with Ruff (because we like your code pretty!)"
+
+  # Type checking - because type hints are your friends
+  - repo: local
+    hooks:
+      - id: mypy
+        name: "Type check Python code (because type safety prevents midnight debugging!)"
+        entry: mypy
+        language: system
+        args: [--ignore-missing-imports, --no-strict-optional, --disable-error-code=attr-defined, --disable-error-code=arg-type, pynds/]
+        types: [python]
+
+  # Security checks - keeping your fortress secure
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        name: "Check for security issues (because security matters!)"
+        args: [-r, pynds/, -f, json, -o, bandit-report.json]
+        exclude: ^tests/
+
+  # Documentation checks - because good docs make everyone happy
+  - repo: https://github.com/pycqa/pydocstyle
+    rev: 6.3.0
+    hooks:
+      - id: pydocstyle
+        name: "Check docstring style (because good docs are a gift for others!!)"
+        args: [--convention=numpy]
+        exclude: ^tests/
+
+  # Test coverage - ensuring your world is well-tested
+  - repo: local
+    hooks:
+      - id: pytest-check
+        name: "Run pytest to ensure tests pass (because tests are your safety net and sanity check!)"
+        entry: python -m pytest tests/ --cov=pynds --cov-fail-under=80
+        language: system
+        pass_filenames: false
+        always_run: false
+        files: ^pynds/.*\.py$
