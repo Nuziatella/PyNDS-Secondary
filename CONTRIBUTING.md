@@ -385,4 +385,4 @@ Great! Here's your first contribution checklist:
 
 ---
 
-*"In the digital realm, every contribution matters - even the smallest bug fix can make someone's day!"* - The PyNDS Philosophy
+*"In the digital realm, every contribution matters - even the smallest bug fix can make someone's day!"* - The PyNDS Philosophy (If thia is to corny you are free to remove it. =P)
