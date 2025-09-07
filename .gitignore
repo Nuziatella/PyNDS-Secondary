@@ -19,3 +19,5 @@ coverage.xml
 s_tests
 treasures
 .vscode/
+enhancement-plan.md
+PyNDS-Secondary.code-workspace
