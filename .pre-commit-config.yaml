@@ -62,8 +62,9 @@ repos:
         name: "Type check Python code (because type safety prevents midnight debugging!)"
         entry: mypy
         language: system
-        args: [--ignore-missing-imports, --no-strict-optional, --disable-error-code=attr-defined, --disable-error-code=arg-type, pynds/]
+        args: [pynds/]
         types: [python]
+        pass_filenames: false
 
   # Security checks - keeping your fortress secure
   - repo: https://github.com/PyCQA/bandit
@@ -73,6 +74,7 @@ repos:
         name: "Check for security issues (because security matters!)"
         args: [-r, pynds/, -f, json, -o, bandit-report.json]
         exclude: ^tests/
+        pass_filenames: false
 
   # Documentation checks - because good docs make everyone happy
   - repo: https://github.com/pycqa/pydocstyle
