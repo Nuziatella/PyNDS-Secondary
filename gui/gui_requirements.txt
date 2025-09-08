@@ -1,0 +1,14 @@
+# GUI Requirements for PyNDS Simple GUI
+# Install with: pip install -r examples/gui_requirements.txt
+
+# Core PyNDS (should be installed from wheel)
+pynds
+
+# GUI Framework (comes with Python)
+tkinter
+
+# Image processing
+Pillow>=9.0.0
+
+# Scientific computing
+numpy>=1.21.0
