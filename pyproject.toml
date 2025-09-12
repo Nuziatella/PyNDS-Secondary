@@ -1,6 +1,6 @@
 [project]
 name = "pynds"
-version = "0.0.4-alpha"
+version = "0.0.5-alpha"
 description = "Python interface for emulated Nintendo DS"
 requires-python = ">=3.9"
 license= {file = "LICENSE"}
@@ -20,7 +20,9 @@ dependencies = [
     "Pillow"
 ]
 
-dynamic = ["readme"]
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
 
 [project.urls]
 Homepage = "https://github.com/unexploredtest/PyNDS"

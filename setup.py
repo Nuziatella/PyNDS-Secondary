@@ -142,12 +142,12 @@ class CMakeBuild(build_ext):
             )
 
 
-version = "0.0.4-alpha"
+version = "0.0.5-alpha"
 
 setup(
     name="pynds",
     packages=find_packages(),
-    install_requires=["numpy", "pygame"],
+    install_requires=["numpy", "pygame", "Pillow"],
     version=version,
     description="Python bindings for NooDS",
     author="unexploredtest",

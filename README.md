@@ -4,6 +4,15 @@ Welcome to **PyNDS** - the Python interface that brings Nintendo DS and Game Boy
 
 Think of it as having a Nintendo DS that lives inside your Python code and does whatever you tell it to do. Perfect for AI researchers, bot developers, and anyone who wants to explore the digital worlds of the past with the power of modern Python!
 
+## What’s new in 0.0.5-alpha
+
+- `run_until_frame()` — a conventional next-frame primitive.
+- `platform`/`get_platform()` — `'nds'` or `'gba'` at a glance.
+- `set_mute(muted: bool)` — best-effort mute without caring where audio lives.
+- `get_frame_format()` — frame metadata (width, height, channels, layout).
+- `get_fps()` / `get_timing_info()` — light timing metrics when you drive frames.
+- GBA autodetect is more forgiving (`.GBA`/`.AGB`, case-insensitive).
+
 ## What Makes PyNDS Special?
 
 - **Dual Platform Support**: Nintendo DS (.nds) and Game Boy Advance (.gba) ROMs
@@ -37,6 +46,14 @@ frame = gba.get_frame()
 nds.button.press_key('a')
 nds.button.set_touch(100, 150)  # Point at the touch screen
 nds.button.touch()              # Make contact with the digital world
+
+# Drive exactly one frame without fetching pixels (useful in loops)
+nds.run_until_frame()
+
+# Ask the obvious questions
+print(nds.platform)               # 'nds' or 'gba'
+print(nds.get_frame_format())     # {'width': 256, 'height': 192, 'channels': 4, ...}
+print(nds.get_fps())              # None initially; becomes a float after a few frames
 
 # Read the game's thoughts (memory access)
 value = nds.memory.read_ram_u32(0x02000000)
