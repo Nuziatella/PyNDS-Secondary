@@ -84,6 +84,11 @@ class Button:
         ValueError
             If coordinates are outside valid range (finger slipped off screen)
         """
+        # Enforce DS touch bounds (inclusive) to match docstring semantics.
+        if not (0 <= x <= 255 and 0 <= y <= 191):
+            raise ValueError(
+                "touch coordinates out of range: x in [0,255], y in [0,191]"
+            )
         self._nds.set_touch_input(x, y)
 
     def clear_touch(self) -> None:
@@ -163,6 +168,60 @@ class Button:
             If key name is not valid
         """
         self._nds.release_key(KEY_MAP[key])
+
+    def press_and_release(self, key: str, frames: int = 1) -> None:
+        """Press a button, hold for N frames, then release.
+
+        A small ergonomic helper for common input patterns in agents/tests.
+
+        Parameters
+        ----------
+        key : str
+            One of the standard DS buttons, e.g., 'a', 'b', 'start', 'up', etc.
+        frames : int
+            Number of frames to hold before releasing (minimum 1).
+        """
+        if frames < 1:
+            frames = 1
+        self.press_key(key)
+        try:
+            for _ in range(frames):
+                # Advance one frame to actually register and hold the press
+                self._nds.run_until_frame()
+                # Pull a frame to keep parity with the main loop
+                try:
+                    self._nds.get_frame()
+                except Exception as e:  # nosec B110: optional fetch may be unsupported
+                    # Some backends fetch via platform-specific getters; not fatal.
+                    logger.debug("optional get_frame() failed during press: %s", e)
+        finally:
+            self.release_key(key)
+
+    def tap(self, x: int, y: int, frames: int = 1) -> None:
+        """Touch the screen at (x, y), hold for N frames, then release.
+
+        Parameters
+        ----------
+        x : int
+            X coordinate on the touch screen (0-255).
+        y : int
+            Y coordinate on the touch screen (0-191).
+        frames : int
+            Number of frames to hold before releasing (minimum 1).
+        """
+        if frames < 1:
+            frames = 1
+        self.set_touch(x, y)
+        self.touch()
+        try:
+            for _ in range(frames):
+                self._nds.run_until_frame()
+                try:
+                    self._nds.get_frame()
+                except Exception as e:  # nosec B110
+                    logger.debug("optional get_frame() failed during tap: %s", e)
+        finally:
+            self.release_touch()
 
     def is_initialized(self) -> bool:
         """Check if the button interface is properly initialized.

@@ -10,9 +10,12 @@ Classes:
 
 import logging
 import os
+import time
+from typing import Optional
 from typing import Tuple
 from typing import Tuple as TupleType
 from typing import Union
+from typing import Union as _Union
 
 import numpy as np
 
@@ -61,7 +64,10 @@ class PyNDS:
     """
 
     def __init__(
-        self, path: str, auto_detect: bool = True, is_gba: bool = False
+        self,
+        path: _Union[str, os.PathLike],
+        auto_detect: bool = True,
+        is_gba: bool = False,
     ) -> None:
         """Initialize PyNDS emulator with a ROM file.
 
@@ -71,7 +77,7 @@ class PyNDS:
 
         Parameters
         ----------
-        path : str
+        path : str | os.PathLike
             Path to the ROM file (.nds or .gba) - your digital treasure map
         auto_detect : bool, optional
             Whether to automatically detect ROM format from file extension (smart mode), by default True
@@ -93,8 +99,12 @@ class PyNDS:
         >>> gba = pynds.PyNDS("game.gba")    # Auto-detect GBA (retro magic)
         >>> nds = pynds.PyNDS("rom.bin", auto_detect=False, is_gba=True)  # Force GBA mode
         """
+        # Normalize path early (accept PathLike)
+        path = os.fspath(path)
+
         if auto_detect:
-            is_gba = path.endswith(".gba") or is_gba
+            lower_path = path.lower()
+            is_gba = lower_path.endswith((".gba", ".agb")) or is_gba
 
         self.is_gba = is_gba
         self._rom_path = path
@@ -109,6 +119,10 @@ class PyNDS:
         # Memory management state
         self._initialized = True
         self._closed = False
+        # Timing metrics (lightweight, best-effort)
+        self._last_frame_ts: Optional[float] = None
+        self._fps_ema: Optional[float] = None
+        self._fps_alpha: float = 0.15
 
         logger.info(f"PyNDS initialized with ROM: {path} (GBA: {is_gba})")
 
@@ -160,6 +174,17 @@ class PyNDS:
         if not self.is_initialized():
             raise RuntimeError("Emulator is not initialized or has been closed")
         self._nds.run_until_frame()
+        t1 = time.perf_counter()
+        # Update simple FPS EMA when we drive a frame boundary
+        if self._last_frame_ts is not None:
+            dt = max(t1 - self._last_frame_ts, 1e-9)
+            fps = 1.0 / dt
+            self._fps_ema = (
+                fps
+                if self._fps_ema is None
+                else ((1.0 - self._fps_alpha) * self._fps_ema + self._fps_alpha * fps)
+            )
+        self._last_frame_ts = t1
         if not hasattr(self, "_frame_count"):
             self._frame_count = 0
         self._frame_count += 1
@@ -181,9 +206,9 @@ class PyNDS:
         """
         try:
             cnds.config.set_emulate_audio(not bool(muted))
-        except Exception:
+        except Exception as e:  # nosec B110
             # Not fatal; a few environments don't allow live toggles.
-            pass
+            logger.debug("set_mute failed (non-fatal): %s", e)
 
     def set_layout(self, layout: str) -> bool:
         """Attempt to set screen layout using any supported backend method.
@@ -202,6 +227,30 @@ class PyNDS:
         except Exception:
             return False
         return False
+
+    def set_speed_multiplier(self, mult: float) -> bool:
+        """Best-effort emulation speed control via available config hooks.
+
+        Tries, in order, any of the following config setters if present:
+        - set_emulation_speed(float)
+        - set_speed(float)
+        - set_speed_multiplier(float)
+
+        Returns True if a setter was found and applied; otherwise False.
+        """
+        try:
+            setter = None
+            for name in ("set_emulation_speed", "set_speed", "set_speed_multiplier"):
+                fn = getattr(config, name, None)
+                if callable(fn):
+                    setter = fn
+                    break
+            if setter is None:
+                return False
+            setter(float(mult))
+            return True
+        except Exception:
+            return False
 
     def tick(self, count: int = 1) -> None:
         """Run the emulator for the specified number of frames.
@@ -233,11 +282,41 @@ class PyNDS:
         for i in range(count):
             self._nds.run_until_frame()
             self._nds.get_frame()
+            t1 = time.perf_counter()
+            if self._last_frame_ts is not None:
+                dt = max(t1 - self._last_frame_ts, 1e-9)
+                fps = 1.0 / dt
+                self._fps_ema = (
+                    fps
+                    if self._fps_ema is None
+                    else (
+                        (1.0 - self._fps_alpha) * self._fps_ema + self._fps_alpha * fps
+                    )
+                )
+            self._last_frame_ts = t1
 
         # Update frame count
         if not hasattr(self, "_frame_count"):
             self._frame_count = 0
         self._frame_count += count
+
+    def get_fps(self) -> Optional[float]:
+        """Return a smoothed backend FPS estimate, if available.
+
+        Calculated as an exponential moving average over recent frame intervals
+        driven by `tick()` / `run_until_frame()`. Returns None until enough
+        samples accumulate.
+        """
+        return self._fps_ema
+
+    def get_timing_info(self) -> dict:
+        """Return timing metrics snapshot for the curious."""
+        return {
+            "fps": self._fps_ema,
+            "last_frame_ts": self._last_frame_ts,
+            "alpha": self._fps_alpha,
+            "frames": getattr(self, "_frame_count", 0),
+        }
 
     def get_frame(self) -> Union[Tuple[np.ndarray, np.ndarray], np.ndarray]:
         """Get the current emulation frame(s).
@@ -308,6 +387,21 @@ class PyNDS:
             return (GBA[0] * scale, GBA[1] * scale, 4)
         else:
             return (NDS[0] * scale, NDS[1] * scale, 4)
+
+    def get_frame_format(self) -> dict:
+        """Describe the frame format in plain terms.
+
+        Returns a dict like {"channels": 4, "dtype": "uint8", "layout": "rgba", "platform": "nds|gba"}.
+        """
+        h, w, c = self.get_frame_shape()
+        return {
+            "width": w,
+            "height": h,
+            "channels": c,
+            "dtype": "uint8",
+            "layout": "rgba",
+            "platform": self.get_platform(),
+        }
 
     def open_window(self, width: int = 800, height: int = 800) -> None:
         """Open a pygame window for visual display.
