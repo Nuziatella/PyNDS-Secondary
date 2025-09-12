@@ -1,8 +1,7 @@
 """PyNDS: A Python wrapper for the Nintendo DS emulator.
 
 Your digital time machine to the Nintendo DS universe! This package brings the
-power of NooDS emulation to Python, perfect for reinforcement learning adventures,
-bot development, and automated gaming magic.
+power of NooDS emulation to Python, perfect for bot development and automated gaming magic.
 
 Main Components:
     PyNDS: Your core emulator class for loading ROMs and controlling emulation
@@ -14,9 +13,15 @@ Main Components:
 Examples
 --------
     >>> import pynds
+    >>> # Basic emulator usage
     >>> nds = pynds.PyNDS("game.nds")
     >>> nds.tick()
     >>> top, bottom = nds.get_frame()
+    
+    >>> # Advanced features (Roadmap 3)
+    >>> state = nds.save_state()
+    >>> nds.load_state(state)
+    >>> nds.export_frame("screenshot.png")
 """
 
 from .config import config
