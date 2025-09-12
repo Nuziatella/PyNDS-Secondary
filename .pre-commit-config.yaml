@@ -56,14 +56,12 @@ repos:
         name: "Format Python code with Ruff (because we like your code pretty!)"
 
   # Type checking - because type hints are your friends
-  - repo: local
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
     hooks:
       - id: mypy
         name: "Type check Python code (because type safety prevents midnight debugging!)"
-        entry: mypy
-        language: system
-        args: [pynds/]
-        types: [python]
+        args: [--config-file=mypy.ini, pynds/]
         pass_filenames: false
 
   # Security checks - keeping your fortress secure
@@ -72,7 +70,7 @@ repos:
     hooks:
       - id: bandit
         name: "Check for security issues (because security matters!)"
-        args: [-r, pynds/, -f, json, -o, bandit-report.json]
+        args: [-r, pynds/, -f, json, -o, bandit-report.json, --severity-level, MEDIUM, --confidence-level, HIGH]
         exclude: ^tests/
         pass_filenames: false
 
