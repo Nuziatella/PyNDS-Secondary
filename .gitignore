@@ -22,3 +22,4 @@ treasures
 enhancement-plan.md
 PyNDS-Secondary.code-workspace
 externals/nanobind
+bandit-report.json
