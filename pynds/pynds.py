@@ -151,6 +151,58 @@ class PyNDS:
         """
         return self.is_gba
 
+    def run_until_frame(self) -> None:
+        """Advance the emulator until the next frame boundary.
+
+        Thin wrapper over the backend's next-frame primitive. Useful when you
+        want to drive emulation one frame at a time without pulling pixels yet.
+        """
+        if not self.is_initialized():
+            raise RuntimeError("Emulator is not initialized or has been closed")
+        self._nds.run_until_frame()
+        if not hasattr(self, "_frame_count"):
+            self._frame_count = 0
+        self._frame_count += 1
+
+    def get_platform(self) -> str:
+        """Return the active platform identifier ('nds' or 'gba')."""
+        return "gba" if bool(self.is_gba) else "nds"
+
+    @property
+    def platform(self) -> str:
+        """Property alias for :meth:`get_platform`. Handy for quick checks."""
+        return self.get_platform()
+
+    def set_mute(self, muted: bool) -> None:
+        """Best-effort audio mute toggle.
+
+        Some builds expose per-instance audio; others centralize it in cnds.config.
+        This method keeps callers blissfully unaware of the distinction.
+        """
+        try:
+            cnds.config.set_emulate_audio(not bool(muted))
+        except Exception:
+            # Not fatal; a few environments don't allow live toggles.
+            pass
+
+    def set_layout(self, layout: str) -> bool:
+        """Attempt to set screen layout using any supported backend method.
+
+        Returns True if a backend handler was found and applied successfully.
+        """
+        try:
+            fn = getattr(self._nds, "set_layout", None)
+            if callable(fn):
+                fn(layout)
+                return True
+            fn = getattr(self._nds, "set_screen_layout", None)
+            if callable(fn):
+                fn(layout)
+                return True
+        except Exception:
+            return False
+        return False
+
     def tick(self, count: int = 1) -> None:
         """Run the emulator for the specified number of frames.
 
