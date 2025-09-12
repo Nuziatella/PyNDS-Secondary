@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+from gymnasium.core import RenderFrame
 
 from .pynds import PyNDS
 
@@ -137,8 +138,8 @@ class PyNDSGymEnv(gym.Env):
 
         # Episode tracking
         self.episode_steps = 0
-        self.episode_reward = 0.0
-        self.last_frame = None
+        self.episode_reward: float = 0.0
+        self.last_frame: Optional[np.ndarray] = None
 
         # Define action and observation spaces
         self._setup_action_space()
@@ -153,7 +154,7 @@ class PyNDSGymEnv(gym.Env):
         )
 
     def _setup_action_space(self) -> None:
-        """Setup action space based on action_type."""
+        """Set up the action space based on ``action_type``."""
         if self.action_type == "discrete":
             # Simple discrete actions: no-op, A, B, Start, Select, D-pad, L, R
             self.action_space = spaces.Discrete(9)
@@ -196,7 +197,7 @@ class PyNDSGymEnv(gym.Env):
             raise ValueError(f"Unsupported action_type: {self.action_type}")
 
     def _setup_observation_space(self) -> None:
-        """Setup observation space based on observation_type."""
+        """Set up the observation space based on ``observation_type``."""
         if self.observation_type == "rgb":
             if self.pynds.is_gba:
                 # GBA: single screen, RGB
@@ -231,7 +232,7 @@ class PyNDSGymEnv(gym.Env):
             raise ValueError(f"Unsupported observation_type: {self.observation_type}")
 
     def _setup_reward_function(self) -> None:
-        """Setup reward function based on reward_type."""
+        """Set up the reward function based on ``reward_type``."""
         if self.reward_type == "custom":
             self._reward_function = self._custom_reward
         elif self.reward_type == "frame_diff":
@@ -413,14 +414,15 @@ class PyNDSGymEnv(gym.Env):
         """Get current observation."""
         frame = self.pynds.get_frame()
 
-        if self.pynds.is_gba:
-            # GBA: single frame
-            obs = frame
-        else:
+        # Narrow union type from (ndarray | tuple[ndarray, ndarray])
+        obs: np.ndarray
+        if isinstance(frame, tuple):
             # NDS: combine top and bottom screens
             top_frame, bottom_frame = frame
-            # Stack vertically (top on top, bottom below)
             obs = np.vstack([top_frame, bottom_frame])
+        else:
+            # GBA: single frame
+            obs = frame
 
         # Convert to desired observation type
         if self.observation_type == "grayscale":
@@ -437,7 +439,7 @@ class PyNDSGymEnv(gym.Env):
         return obs
 
     def _custom_reward(self, obs: np.ndarray) -> float:
-        """Custom reward function - override this for specific games."""
+        """Compute the custom reward; override for specific games."""
         # Simple reward based on frame changes
         if self.last_frame is not None:
             frame_diff = np.mean(
@@ -466,7 +468,7 @@ class PyNDSGymEnv(gym.Env):
         # Override this for game-specific termination conditions
         return False
 
-    def render(self) -> Optional[np.ndarray]:
+    def render(self) -> Union[RenderFrame, List[RenderFrame], None]:
         """Render the environment."""
         if self.render_mode == "human":
             # Use PyNDS window for human rendering
@@ -535,7 +537,7 @@ class CustomPyNDSGymEnv(PyNDSGymEnv):
         # Custom reward tracking
         self.reward_history = []
         self.last_memory_values = {}
-        self.progress_tracker = 0
+        self.progress_tracker: float = 0.0
         self.survival_steps = 0
         self.exploration_map = set()
 
@@ -618,9 +620,9 @@ class CustomPyNDSGymEnv(PyNDSGymEnv):
                             reward += level_diff * 100.0  # Big reward for level up!
                     self.last_memory_values[name] = current_level
 
-        except Exception:
+        except Exception as e:  # nosec B110
             # If memory reading fails, continue without memory rewards
-            pass
+            logger.debug("memory-based reward read failed: %s", e)
 
         return reward
 
@@ -637,8 +639,8 @@ class CustomPyNDSGymEnv(PyNDSGymEnv):
                 progress_diff = current_progress - self.progress_tracker
                 reward += progress_diff * 50.0  # Reward for progress
                 self.progress_tracker = current_progress
-        except Exception:
-            pass
+        except Exception as e:  # nosec B110
+            logger.debug("progress-based reward read failed: %s", e)
 
         return reward
 
