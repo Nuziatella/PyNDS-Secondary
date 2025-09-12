@@ -70,7 +70,7 @@ repos:
     hooks:
       - id: bandit
         name: "Check for security issues (because security matters!)"
-        args: [-r, pynds/, -f, json, -o, bandit-report.json, --severity-level, MEDIUM, --confidence-level, HIGH]
+        args: [-r, pynds/, -f, json, -o, bandit-report.json, --severity-level, medium, --confidence-level, high]
         exclude: ^tests/
         pass_filenames: false
 
