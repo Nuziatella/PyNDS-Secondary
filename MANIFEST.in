@@ -1,0 +1,6 @@
+include CMakeLists.txt
+include LICENSE
+include README.md
+include pyproject.toml
+recursive-include cnds *.cpp *.hpp *.h
+recursive-include externals *
