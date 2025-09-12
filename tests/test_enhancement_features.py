@@ -5,10 +5,14 @@ including in-memory state management, enhanced frame control, and screen export
 capabilities using real PyNDS instances with mocked C++ components.
 """
 
+from pathlib import Path
 from unittest.mock import Mock, mock_open, patch
 
 import numpy as np
 import pytest
+
+from pynds import BUTTON_KEYS, VALID_KEYS
+from pynds.button import KEY_MAP
 
 # Import the classes we're testing
 from pynds.pynds import PyNDS
@@ -293,6 +297,98 @@ class TestScreenExportFunctionality:
             mock_combined.paste.assert_any_call(mock_bottom_img, (0, 50))
 
 
+class TestNewApiHelpers:
+    """Tests for newly added helper APIs in 0.0.5-alpha."""
+
+    @pytest.fixture
+    def mock_pynds_instance(self):
+        """Create a real PyNDS instance with mocked C++ components and config."""
+        with patch("pynds.pynds.cnds") as mock_cnds:
+            with patch("os.path.isfile", return_value=True):
+                # Mock the C++ NDS class and config
+                mock_nds = Mock()
+                mock_cnds.Nds.return_value = mock_nds
+                # Provide a config with screen filters disabled for predictable sizes
+                mock_cfg = Mock()
+                mock_cfg.get_high_res_3d.return_value = False
+                mock_cfg.get_screen_filter.return_value = 0
+                with patch("pynds.pynds.config", mock_cfg):
+                    pynds = PyNDS("fake_rom.nds")
+                    pynds._nds = mock_nds
+                    pynds._closed = False
+                    return pynds
+
+    def test_run_until_frame_increments_frame_count(self, mock_pynds_instance):
+        emu = mock_pynds_instance
+        # Ensure fresh state
+        if hasattr(emu, "_frame_count"):
+            delattr(emu, "_frame_count")
+
+        # Drive two frames; mock perf_counter for stable timing
+        with patch("pynds.pynds.time.perf_counter", side_effect=[1000.0, 1000.016]):
+            emu.run_until_frame()
+            emu.run_until_frame()
+
+        assert getattr(emu, "_frame_count", 0) == 2
+
+    def test_platform_helpers(self, mock_pynds_instance):
+        emu = mock_pynds_instance
+        assert emu.get_platform() == "nds"
+        emu.is_gba = True
+        assert emu.platform == "gba"
+
+    def test_set_mute_bridges_to_cnds_config(self):
+        with patch("pynds.pynds.cnds") as mock_cnds:
+            with patch("os.path.isfile", return_value=True):
+                mock_nds = Mock()
+                mock_cnds.Nds.return_value = mock_nds
+                # Attach a config with set_emulate_audio
+                mock_cnds.config.set_emulate_audio = Mock()
+                emu = PyNDS("fake_rom.nds")
+                emu.set_mute(True)
+                emu.set_mute(False)
+                # True => emulate_audio False; False => emulate_audio True
+                mock_cnds.config.set_emulate_audio.assert_any_call(False)
+                mock_cnds.config.set_emulate_audio.assert_any_call(True)
+
+    def test_get_frame_format_dimensions_and_platform(self, mock_pynds_instance):
+        emu = mock_pynds_instance
+        # NDS expectations: 192x256 h/w with RGBA
+        fmt = emu.get_frame_format()
+        assert fmt["platform"] == "nds"
+        assert fmt["height"] == 192 and fmt["width"] == 256
+        assert fmt["channels"] == 4 and fmt["layout"] == "rgba"
+
+        # Switch to GBA and re-check
+        emu.is_gba = True
+        fmt = emu.get_frame_format()
+        assert fmt["platform"] == "gba"
+        assert fmt["height"] == 160 and fmt["width"] == 240
+
+    def test_get_fps_and_timing_info(self, mock_pynds_instance):
+        emu = mock_pynds_instance
+        # Initially no samples
+        assert emu.get_fps() is None
+
+        # Two frames ~16ms apart (~62.5 FPS)
+        with patch("pynds.pynds.time.perf_counter", side_effect=[1000.0, 1000.016]):
+            emu.run_until_frame()
+            emu.run_until_frame()
+
+        fps = emu.get_fps()
+        assert fps is not None and 55.0 <= fps <= 70.0
+        info = emu.get_timing_info()
+        assert "fps" in info and info["frames"] >= 2
+
+    def test_autodetect_agb_uppercase(self):
+        with patch("pynds.pynds.cnds") as mock_cnds:
+            with patch("os.path.isfile", return_value=True):
+                mock_nds = Mock()
+                mock_cnds.Nds.return_value = mock_nds
+                emu = PyNDS("GAME.AGB")
+                assert emu.is_gba is True
+
+
 class TestRoadmap3IntegrationScenarios:
     """Test integration scenarios combining multiple Roadmap 3 features."""
 
@@ -342,6 +438,80 @@ class TestRoadmap3IntegrationScenarios:
                             assert mock_step.call_count == 10
                             assert mock_export.call_count == 2  # steps 0 and 5
                             assert mock_load.call_count == 1
+
+
+class TestInputHelpers:
+    """Tests for input convenience helpers and top-level key exports."""
+
+    @pytest.fixture
+    def mock_pynds_instance(self):
+        """Create a real PyNDS instance with mocked C++ components."""
+        with patch("pynds.pynds.cnds") as mock_cnds:
+            with patch("os.path.isfile", return_value=True):
+                mock_nds = Mock()
+                mock_cnds.Nds.return_value = mock_nds
+                pynds = PyNDS("fake_rom.nds")
+                pynds._nds = mock_nds
+                pynds._closed = False
+                return pynds
+
+    def test_press_and_release_holds_for_n_frames(self, mock_pynds_instance):
+        emu = mock_pynds_instance
+        frames = 3
+        emu.button.press_and_release("a", frames=frames)
+        # Key mapping should route through the underlying backend
+        emu._nds.press_key.assert_called_once_with(KEY_MAP["a"])
+        emu._nds.release_key.assert_called_once_with(KEY_MAP["a"])
+        assert emu._nds.run_until_frame.call_count == frames
+        assert emu._nds.get_frame.call_count == frames
+
+    def test_tap_holds_touch_then_releases(self, mock_pynds_instance):
+        emu = mock_pynds_instance
+        frames = 2
+        x, y = 120, 88
+        emu.button.tap(x, y, frames=frames)
+        emu._nds.set_touch_input.assert_called_once_with(x, y)
+        emu._nds.touch_input.assert_called_once()
+        emu._nds.release_touch_input.assert_called_once()
+        assert emu._nds.run_until_frame.call_count == frames
+        assert emu._nds.get_frame.call_count == frames
+
+    def test_top_level_key_exports_and_pathlike(self):
+        # Expect canonical keys to include 'a'
+        assert "a" in VALID_KEYS
+        assert BUTTON_KEYS["a"] == KEY_MAP["a"]
+
+        # PyNDS accepts PathLike
+        with patch("pynds.pynds.cnds") as mock_cnds:
+            with patch("os.path.isfile", return_value=True):
+                mock_nds = Mock()
+                mock_cnds.Nds.return_value = mock_nds
+                rom = Path("fake_rom.nds")
+                emu = PyNDS(rom)
+                assert emu._rom_path == str(rom)
+                mock_cnds.Nds.assert_called_once_with(str(rom), False)
+
+    def test_set_touch_bounds_validation(self, mock_pynds_instance):
+        emu = mock_pynds_instance
+        # In-bounds should not raise
+        emu.button.set_touch(0, 0)
+        emu.button.set_touch(255, 191)
+        # Out-of-bounds should raise ValueError
+        with pytest.raises(ValueError):
+            emu.button.set_touch(-1, 0)
+        with pytest.raises(ValueError):
+            emu.button.set_touch(0, 192)
+        with pytest.raises(ValueError):
+            emu.button.set_touch(256, 191)
+
+    def test_set_speed_multiplier_bridging(self, mock_pynds_instance):
+        emu = mock_pynds_instance
+        # Patch config to expose a specific speed setter
+        with patch("pynds.pynds.config") as mock_cfg:
+            mock_cfg.set_speed_multiplier = Mock()
+            ok = emu.set_speed_multiplier(1.25)
+            assert ok is True
+            mock_cfg.set_speed_multiplier.assert_called_once_with(1.25)
 
     def test_batch_frame_export_workflow(self, mock_pynds_instance):
         """Test batch frame export workflow using frame control and export features."""

@@ -8,8 +8,8 @@ Usage:
     python run_gui.py
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add the gui directory to the Python path
@@ -23,6 +23,7 @@ os.chdir(gui_dir)
 if __name__ == "__main__":
     try:
         from run_gui import main
+
         main()
     except ImportError as e:
         print(f"Failed to import GUI: {e}")
