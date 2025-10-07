@@ -23,3 +23,5 @@ enhancement-plan.md
 PyNDS-Secondary.code-workspace
 externals/nanobind
 bandit-report.json
+venv311/
+venv312/
