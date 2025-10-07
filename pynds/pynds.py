@@ -11,7 +11,7 @@ Classes:
 import logging
 import os
 import time
-from typing import Optional
+from typing import List, Optional
 from typing import Tuple
 from typing import Tuple as TupleType
 from typing import Union
@@ -123,6 +123,13 @@ class PyNDS:
         self._last_frame_ts: Optional[float] = None
         self._fps_ema: Optional[float] = None
         self._fps_alpha: float = 0.15
+
+        # Rewind functionality (PyBoy-inspired time travel!)
+        self._rewind_enabled: bool = False
+        self._rewind_states: List[bytes] = []
+        self._rewind_max_states: int = 1000  # Maximum states to keep in memory
+        self._rewind_interval: int = 60  # Save state every N frames
+        self._rewind_position: int = -1  # Current position in rewind history
 
         logger.info(f"PyNDS initialized with ROM: {path} (GBA: {is_gba})")
 
@@ -299,6 +306,10 @@ class PyNDS:
         if not hasattr(self, "_frame_count"):
             self._frame_count = 0
         self._frame_count += count
+
+        # Handle rewind state saving
+        if self._rewind_enabled and self._frame_count % self._rewind_interval == 0:
+            self._save_rewind_state()
 
     def get_fps(self) -> Optional[float]:
         """Return a smoothed backend FPS estimate, if available.
@@ -1102,6 +1113,220 @@ class PyNDS:
             combined.paste(bottom_img, (0, top_img.height))
 
             return combined
+
+    # ===== REWIND FUNCTIONALITY (PyBoy-inspired time travel!) =====
+
+    def enable_rewind(self, max_states: int = 1000, interval: int = 60) -> None:
+        """Enable rewind functionality for time travel through your game.
+
+        One of PyBoy's most beloved features! This allows you to rewind your
+        game state and travel back in time to any previous moment. Perfect for
+        fixing mistakes, exploring different paths, or just having fun with
+        digital time manipulation.
+
+        Parameters
+        ----------
+        max_states : int, optional
+            Maximum number of states to keep in memory (memory vs. history trade-off), by default 1000
+        interval : int, optional
+            Save state every N frames (frequency vs. performance trade-off), by default 60
+
+        Examples
+        --------
+        >>> nds.enable_rewind(max_states=500, interval=30)  # More frequent saves
+        >>> nds.tick(1000)  # Play for a while
+        >>> nds.rewind(10)  # Go back 10 states (300 frames)
+        >>> nds.rewind_to_beginning()  # Back to the very start!
+        """
+        if not self.is_initialized():
+            raise RuntimeError("Emulator is not initialized or has been closed")
+
+        self._rewind_enabled = True
+        self._rewind_max_states = max_states
+        self._rewind_interval = interval
+        self._rewind_states = []
+        self._rewind_position = -1
+
+        # Save initial state
+        self._save_rewind_state()
+
+        logger.info(f"Rewind enabled: max_states={max_states}, interval={interval}")
+
+    def disable_rewind(self) -> None:
+        """Disable rewind functionality and clear saved states.
+
+        Turns off the time machine and frees up memory used for storing
+        rewind states. Your current game state remains unchanged.
+
+        Examples
+        --------
+        >>> nds.disable_rewind()  # Stop the time machine
+        """
+        self._rewind_enabled = False
+        self._rewind_states = []
+        self._rewind_position = -1
+        logger.info("Rewind disabled")
+
+    def rewind(self, steps: int = 1) -> bool:
+        """Rewind the game state by the specified number of steps.
+
+        Travel back in time! This is the magic of PyBoy's rewind feature
+        brought to PyNDS. Go back to any previous state and explore
+        different possibilities.
+
+        Parameters
+        ----------
+        steps : int, optional
+            Number of rewind steps to take (how far back in time), by default 1
+
+        Returns
+        -------
+        bool
+            True if rewind was successful, False if no more states to rewind to
+
+        Examples
+        --------
+        >>> nds.rewind(1)  # Go back one state
+        >>> nds.rewind(5)  # Go back five states
+        >>> if nds.rewind(10):  # Go back ten states
+        ...     print("Successfully rewound!")
+        ... else:
+        ...     print("Can't rewind that far!")
+        """
+        if not self._rewind_enabled or not self._rewind_states:
+            return False
+
+        # Calculate new position
+        new_position = self._rewind_position - steps
+
+        # Check bounds
+        if new_position < 0:
+            new_position = 0
+        if new_position >= len(self._rewind_states):
+            return False
+
+        # Load the state
+        try:
+            self.load_state(self._rewind_states[new_position])
+            self._rewind_position = new_position
+
+            # Update frame count to match the rewound state
+            self._frame_count = new_position * self._rewind_interval
+
+            logger.debug(f"Rewound to position {new_position} ({steps} steps back)")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to rewind: {e}")
+            return False
+
+    def rewind_to_beginning(self) -> bool:
+        """Rewind to the very beginning of the rewind history.
+
+        Go all the way back to the start! This is like hitting the
+        "restart from checkpoint" button, but with the power of time travel.
+
+        Returns
+        -------
+        bool
+            True if rewind was successful, False if no states available
+
+        Examples
+        --------
+        >>> nds.rewind_to_beginning()  # Back to the start!
+        """
+        if not self._rewind_states:
+            return False
+        return self.rewind(len(self._rewind_states) - 1)
+
+    def fast_forward(self, steps: int = 1) -> bool:
+        """Fast forward through the rewind history.
+
+        Move forward in time through your saved states. This is useful
+        for navigating through your rewind history without having to
+        replay everything.
+
+        Parameters
+        ----------
+        steps : int, optional
+            Number of steps to fast forward, by default 1
+
+        Returns
+        -------
+        bool
+            True if fast forward was successful, False if at the end
+
+        Examples
+        --------
+        >>> nds.fast_forward(3)  # Move forward 3 states
+        """
+        if not self._rewind_enabled or not self._rewind_states:
+            return False
+
+        new_position = self._rewind_position + steps
+        if new_position >= len(self._rewind_states):
+            return False
+
+        try:
+            self.load_state(self._rewind_states[new_position])
+            self._rewind_position = new_position
+            self._frame_count = new_position * self._rewind_interval
+            return True
+        except Exception as e:
+            logger.error(f"Failed to fast forward: {e}")
+            return False
+
+    def get_rewind_info(self) -> dict:
+        """Get information about the current rewind state.
+
+        Returns a dictionary with details about your time travel capabilities,
+        including how many states are saved and your current position.
+
+        Returns
+        -------
+        dict
+            Dictionary containing rewind information
+
+        Examples
+        --------
+        >>> info = nds.get_rewind_info()
+        >>> print(f"States saved: {info['total_states']}")
+        >>> print(f"Current position: {info['current_position']}")
+        """
+        return {
+            "enabled": self._rewind_enabled,
+            "total_states": len(self._rewind_states),
+            "current_position": self._rewind_position,
+            "max_states": self._rewind_max_states,
+            "interval": self._rewind_interval,
+            "can_rewind": self._rewind_position > 0,
+            "can_fast_forward": self._rewind_position < len(self._rewind_states) - 1,
+        }
+
+    def _save_rewind_state(self) -> None:
+        """Save current state to rewind history.
+
+        Internal method that saves the current emulation state to the
+        rewind history. Automatically manages memory by removing old
+        states when the limit is reached.
+        """
+        try:
+            state_data = self.save_state()
+
+            # If we're not at the end, truncate future states
+            if self._rewind_position < len(self._rewind_states) - 1:
+                self._rewind_states = self._rewind_states[: self._rewind_position + 1]
+
+            # Add new state
+            self._rewind_states.append(state_data)
+            self._rewind_position = len(self._rewind_states) - 1
+
+            # Trim if we exceed max states
+            if len(self._rewind_states) > self._rewind_max_states:
+                self._rewind_states = self._rewind_states[-self._rewind_max_states :]
+                self._rewind_position = len(self._rewind_states) - 1
+
+        except Exception as e:
+            logger.error(f"Failed to save rewind state: {e}")
 
     def close(self) -> None:
         """Close the emulator and clean up all resources.

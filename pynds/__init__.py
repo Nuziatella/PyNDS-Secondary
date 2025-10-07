@@ -26,7 +26,16 @@ Examples
 
 from .button import KEY_MAP as BUTTON_KEYS
 from .config import config
+from .debugger import PyNDSDebugger
+from .game_wrappers import (
+    BaseGameWrapper,
+    MarioWrapper,
+    PokemonWrapper,
+    ZeldaWrapper,
+    create_game_wrapper,
+)
 from .pynds import PyNDS
+from .recorder import PyNDSRecorder
 
 # Friendly alias for just the names (stable order not guaranteed).
 VALID_KEYS = tuple(BUTTON_KEYS.keys())
@@ -136,4 +145,12 @@ __all__ = [
     "__version__",
     "get_build_info",
     "list_features",
+    # New PyBoy-inspired features
+    "PyNDSDebugger",
+    "PyNDSRecorder",
+    "create_game_wrapper",
+    "BaseGameWrapper",
+    "PokemonWrapper",
+    "MarioWrapper",
+    "ZeldaWrapper",
 ]
